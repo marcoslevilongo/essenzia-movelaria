@@ -1,0 +1,11 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# Duplicate of assets/images/logo.jpg
+590415264_17844972396616360_8062392953392739988_n.jpg
+
+# Editor
+.vscode/
+.idea/
+*.swp
