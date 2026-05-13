@@ -141,35 +141,90 @@
   }
 
   // --------------------------------------------------------
-  // Form submission → opens WhatsApp with prefilled message
+  // Form: inline blur validation + submit → WhatsApp
+  // (UI Pro Max: forms — inline-validation, error-clarity, submit-feedback)
   // --------------------------------------------------------
   const form = document.getElementById('leadForm');
   const formSuccess = document.getElementById('formSuccess');
+  const submitBtn = document.getElementById('submitBtn');
+
+  const VALIDATORS = {
+    nome: {
+      check: (v) => v.trim().length >= 2,
+      msg: 'Por favor, informe seu nome completo.',
+    },
+    whatsapp: {
+      check: (v) => v.replace(/\D/g, '').length >= 10,
+      msg: 'Informe um WhatsApp válido com DDD.',
+    },
+    cidade: {
+      check: (v) => v.trim().length >= 2,
+      msg: 'Informe a sua cidade.',
+    },
+    ambiente: {
+      check: (v) => v.trim().length > 0,
+      msg: 'Selecione um tipo de ambiente.',
+    },
+  };
+
+  const setFieldError = (id, msg) => {
+    const el = document.getElementById(id);
+    const errEl = document.getElementById(`${id}-error`);
+    if (!el) return;
+    if (msg) {
+      el.classList.add('error');
+      el.setAttribute('aria-invalid', 'true');
+      if (errEl) errEl.textContent = msg;
+    } else {
+      el.classList.remove('error');
+      el.removeAttribute('aria-invalid');
+      if (errEl) errEl.textContent = '';
+    }
+  };
+
+  const validateField = (id) => {
+    const el = document.getElementById(id);
+    if (!el) return true;
+    const v = el.value;
+    // Only show error if user has tried to fill it
+    if (!VALIDATORS[id]) return true;
+    if (!VALIDATORS[id].check(v)) {
+      setFieldError(id, VALIDATORS[id].msg);
+      return false;
+    }
+    setFieldError(id, '');
+    return true;
+  };
 
   if (form) {
+    // Validate on blur (after first interaction)
+    Object.keys(VALIDATORS).forEach((id) => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.addEventListener('blur', () => {
+        if (el.dataset.touched === 'true') validateField(id);
+      });
+      el.addEventListener('input', () => {
+        el.dataset.touched = 'true';
+        // Clear error live as user fixes it
+        if (el.classList.contains('error')) {
+          if (VALIDATORS[id].check(el.value)) setFieldError(id, '');
+        }
+      });
+      el.addEventListener('change', () => {
+        el.dataset.touched = 'true';
+        validateField(id);
+      });
+    });
+
     form.addEventListener('submit', (e) => {
       e.preventDefault();
 
-      const fields = ['nome', 'whatsapp', 'cidade', 'ambiente'];
+      // Force-validate all fields
       let valid = true;
-
-      fields.forEach((id) => {
-        const el = document.getElementById(id);
-        if (!el.value.trim()) {
-          el.classList.add('error');
-          valid = false;
-        } else {
-          el.classList.remove('error');
-        }
+      Object.keys(VALIDATORS).forEach((id) => {
+        if (!validateField(id)) valid = false;
       });
-
-      // Basic phone validation
-      const phone = document.getElementById('whatsapp');
-      const phoneDigits = phone.value.replace(/\D/g, '');
-      if (phoneDigits.length < 10) {
-        phone.classList.add('error');
-        valid = false;
-      }
 
       if (!valid) {
         const firstError = form.querySelector('.error');
@@ -180,8 +235,11 @@
         return;
       }
 
+      // Loading state on submit button
+      if (submitBtn) submitBtn.dataset.loading = 'true';
+
       const nome = document.getElementById('nome').value.trim();
-      const whats = phone.value.trim();
+      const whats = document.getElementById('whatsapp').value.trim();
       const cidade = document.getElementById('cidade').value.trim();
       const ambiente = document.getElementById('ambiente').value;
       const mensagem = document.getElementById('mensagem').value.trim();
@@ -204,28 +262,66 @@
       const text = encodeURIComponent(lines.join('\n'));
       const url = `https://wa.me/${WHATSAPP_NUMBER}?text=${text}`;
 
-      // Show success state
-      if (formSuccess) {
-        formSuccess.hidden = false;
-      }
-
-      // Open WhatsApp shortly after success state appears
+      // Brief loading state, then show success + open WhatsApp
       setTimeout(() => {
+        if (formSuccess) formSuccess.hidden = false;
         window.open(url, '_blank', 'noopener');
-      }, 400);
+      }, 500);
 
-      // Reset form after a few seconds (in case user returns)
+      // Reset after a few seconds
       setTimeout(() => {
         form.reset();
         if (formSuccess) formSuccess.hidden = true;
-      }, 6000);
+        if (submitBtn) delete submitBtn.dataset.loading;
+        // Clear all errors
+        Object.keys(VALIDATORS).forEach((id) => setFieldError(id, ''));
+        // Reset touched flags
+        form.querySelectorAll('[data-touched]').forEach((el) => {
+          delete el.dataset.touched;
+        });
+      }, 6500);
     });
+  }
 
-    // Clear error on input
-    form.querySelectorAll('input, select, textarea').forEach((el) => {
-      el.addEventListener('input', () => el.classList.remove('error'));
-      el.addEventListener('change', () => el.classList.remove('error'));
-    });
+  // --------------------------------------------------------
+  // Stats counter animation (triggers when section is in view)
+  // (UI Pro Max: trust signals — animate to feel alive)
+  // --------------------------------------------------------
+  const statNums = document.querySelectorAll('.stat-num');
+  if (statNums.length && 'IntersectionObserver' in window) {
+    const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    const animateNum = (el) => {
+      const target = parseInt(el.dataset.target || '0', 10);
+      if (prefersReduced || target <= 0) {
+        el.textContent = target;
+        return;
+      }
+      const duration = 1400;
+      const start = performance.now();
+      const tick = (now) => {
+        const t = Math.min(1, (now - start) / duration);
+        // Ease-out cubic
+        const eased = 1 - Math.pow(1 - t, 3);
+        el.textContent = Math.floor(eased * target).toString();
+        if (t < 1) requestAnimationFrame(tick);
+        else el.textContent = target.toString();
+      };
+      requestAnimationFrame(tick);
+    };
+
+    const statIO = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            animateNum(entry.target);
+            statIO.unobserve(entry.target);
+          }
+        });
+      },
+      { threshold: 0.3 }
+    );
+    statNums.forEach((el) => statIO.observe(el));
   }
 
   // --------------------------------------------------------
